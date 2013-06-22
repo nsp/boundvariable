@@ -6,7 +6,7 @@ type um_state = {
   scrolls : scroll array;
   finger_offset : int * int (* array, offset *)
 }
-		  
+
 let default_state = {
   regs = Array.make 8 0;
   scrolls = Array.make 32 (Array.make 0 0);
@@ -36,7 +36,7 @@ let init_um name : um_state =
     let scrl = Array.make len 0 in
     let scrls = Array.copy default_state.scrolls in
     (for i = 0 to pred len do
-	scrl.(i) <- 0xffffffff land (input_binary_int chan)
+        scrl.(i) <- 0xffffffff land (input_binary_int chan)
     done);
     scrls.(0) <- scrl;
     { default_state with scrolls = scrls }
@@ -60,12 +60,23 @@ let print_state { regs=rs; scrolls=ss; finger_offset=(fs,fo) } =
 (***********************************************************)
 
 type reg = int (* 3-bit # *)
+type value = int
 
 type operation =
-  CondMove of reg*reg*reg
-| ArrIdx of reg*reg*reg
-| Halt
-| Orth of reg*int
+  | Condmv of reg * reg * reg
+  | Arridx of reg * reg * reg
+  | Arramd of reg * reg * reg
+  | Add of reg * reg * reg
+  | Mult of reg * reg * reg
+  | Div of reg * reg * reg
+  | Nand of reg * reg * reg
+  | Halt
+  | Alloc of reg * reg
+  | Aband of reg
+  | Output of reg
+  | Input of reg
+  | Loadpr of reg * reg
+  | Orth of reg * value
 
 (*** Constants ***)
 
@@ -108,7 +119,34 @@ let operation_of_platter pl : operation =
 
 (*** platter_of_operation functions ***)
 
-let platter_of_halt = 7 lsl opcode_shift
+let platter_of_operation : operation -> platter =
+  let set_areg v pl = pl lor ((v land 7) lsl areg_shift) in
+  let set_breg v pl = pl lor ((v land 7) lsl breg_shift) in
+  let set_creg v pl = pl lor ((v land 7) lsl creg_shift) in
+  let std_op opcode a b c = set_areg a (set_breg b (set_creg c (opcode lsl opcode_shift))) in
+  function
+  | Condmv (a,b,c) -> std_op  0 a b c
+  | Arridx (a,b,c) -> std_op  1 a b c
+  | Arramd (a,b,c) -> std_op  2 a b c
+  | Add (a,b,c)    -> std_op  3 a b c
+  | Mult (a,b,c)   -> std_op  4 a b c
+  | Div (a,b,c)    -> std_op  5 a b c
+  | Nand (a,b,c)   -> std_op  6 a b c
+  | Halt           -> std_op  7 0 0 0
+  | Alloc (b,c)    -> std_op  8 0 b c
+  | Aband (c)      -> std_op  9 0 0 c
+  | Output (c)     -> std_op 10 0 0 c
+  | Input (c)      -> std_op 11 0 0 c
+  | Loadpr (b,c)   -> std_op 12 0 b c
+  | Orth (a, v)    -> (13 lsl opcode_shift) lor ((a land 7) lsl 25) lor (v land 0x01ffffff)
+
+let make_scroll ops : scroll =
+  Array.of_list (List.map platter_of_operation ops)
+
+let make_state ops =
+  let scrls = Array.copy default_state.scrolls in
+  scrls.(0) <- make_scroll ops;
+  { default_state with scrolls = scrls }
 
 (*** Spin cycling **)
 
