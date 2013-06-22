@@ -43,3 +43,15 @@ let init_um name : um_state =
   in
   with_input_file name read_scroll_from_chan
 
+let print_state { regs=rs; scrolls=ss; finger_offset=(fs,fo) } =
+  Printf.printf "Registers: %08x %08x %08x %08x %08x %08x %08x %08x\n"
+    rs.(0) rs.(1) rs.(2) rs.(3) rs.(4) rs.(5) rs.(6) rs.(7);
+  Printf.printf "Finger scroll/offset: %08x/%08x\n" fs fo;
+  if (Array.length ss.(fs) - fo) > 2 then
+    Printf.printf "Current scroll: %08x %08x %08x\n" ss.(fs).(fo) ss.(fs).(succ fo) ss.(fs).(succ (succ fo))
+  else if (Array.length ss.(fs) - fo) > 1 then
+    Printf.printf "Current scroll: %08x %08x\n" ss.(fs).(fo) ss.(fs).(succ fo)
+  else if (Array.length ss.(fs) - fo) > 0 then
+    Printf.printf "Current scroll: %08x\n" ss.(fs).(fo)
+  else
+    Printf.printf "Reached end of the scroll\n"
