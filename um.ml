@@ -36,7 +36,7 @@ let init_um name : um_state =
     let scrl = Array.make len 0 in
     let scrls = Array.copy default_state.scrolls in
     (for i = 0 to pred len do
-	scrl.(i) <- (input_binary_int chan)
+	scrl.(i) <- 0xffffffff land (input_binary_int chan)
     done);
     scrls.(0) <- scrl;
     { default_state with scrolls = scrls }
