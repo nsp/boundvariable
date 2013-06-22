@@ -6,8 +6,8 @@ let main () =
     ] in
   Arg.parse argspecs (fun p -> prog_file := p)
     "Usage: ./main [options] source_file";
-    if !verbose then print_endline (Printf.sprintf "In main" )
-    
+    if !verbose then print_endline (Printf.sprintf "In main");
+    init_um
 ;;
 
 main ()
