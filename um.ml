@@ -164,29 +164,54 @@ let do_spin_cycle state : um_state * bool =
                        cont {state' with regs = regs'})
   | Arramd (a,b,c) -> (print_endline "Arramd";
                        cont state')
-  | Add (a,b,c)    -> (print_endline "Add";
-                       cont state')
+  | Add (a,b,c)    -> (print_endline "Add r[%d] := r[%d] + r[%d]";
+                       (* The register A receives the value in register B plus
+                          the value in register C, modulo 2^32. *)
+                       let regs' = Array.copy rs in
+                       regs'.(a) <- (rs.(b) + rs.(c)) mod 0x100000000;
+                       cont {state' with regs = regs'})
   | Mult (a,b,c)   -> (print_endline "Mult";
                        cont state')
   | Div (a,b,c)    -> (print_endline "Div";
-                       cont state')
+                       (* The register A receives the value in register B
+                          divided by the value in register C, if any, where
+                          each quantity is treated treated as an unsigned 32
+                          bit number. *)
+                       let regs' = Array.copy rs in
+                       regs'.(a) <- rs.(b) / rs.(c);
+                       cont {state' with regs = regs'})
   | Nand (a,b,c)   -> (print_endline "Nand";
                        cont state')
   | Halt           -> (print_endline "Halt";
+                       (* The universal machine stops computation. *)
                        halt state')
   | Alloc (b,c)    -> (print_endline "Alloc";
+                       (* A new array is created with a capacity of platters
+                          commensurate to the value in the register C. This
+                          new array is initialized entirely with platters
+                          holding the value 0. A bit pattern not consisting of
+                          exclusively the 0 bit, and that identifies no other
+                          active allocated array, is placed in the B register. *)
                        cont state')
   | Aband (c)      -> (print_endline "Aband";
+                       (* The array identified by the register C is abandoned.
+                          Future allocations may then reuse that identifier. *)
                        cont state')
   | Output (c)     -> (print_endline "Output";
                        cont state')
   | Input (c)      -> (print_endline "Input";
+		       (* The universal machine waits for input on the console.
+			  When input arrives, the register C is loaded with the
+			  input, which must be between and including 0 and 255.
+			  If the end of input has been signaled, then the 
+			  register C is endowed with a uniform value pattern
+			  where every place is pregnant with the 1 bit. *)
                        cont state')
   | Loadpr (b,c)   -> (print_endline "Loadpr";
                        cont state')
   | Orth (a, v)    -> (print_endline "Orth";
-		       (* The value indicated is loaded into the register A
-			  forthwith. *)
+                       (* The value indicated is loaded into the register A
+                          forthwith. *)
                        let regs' = Array.copy rs in
                        regs'.(a) <- v;
                        cont {state' with regs = regs'})
