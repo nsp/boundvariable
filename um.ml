@@ -86,6 +86,7 @@ let opcode_shift = 4+3*8
 let areg_shift = 6
 let breg_shift = 3
 let creg_shift = 0
+let int_mod = 4294967296
 
 (*** operation of platter ***)
 
@@ -162,8 +163,17 @@ let do_spin_cycle state : um_state * bool =
 		       cont state')
   | Add (a,b,c)    -> (print_endline "Add";
 		       cont state')
-  | Mult (a,b,c)   -> (print_endline "Mult";
-		       cont state')
+  | Mult (a,b,c)   ->
+    (
+      print_endline "Mult";
+
+      (* reg A gets reg B x reg C modulo 2^32 *)
+      let regs' = Array.copy rs in
+      regs'.(a) <- (regs'.(b) * regs'.(c)) mod int_mod;
+
+      cont {state' with regs = regs'}
+    )
+
   | Div (a,b,c)    -> (print_endline "Div";
 		       cont state')
   | Nand (a,b,c)   -> (print_endline "Nand";
