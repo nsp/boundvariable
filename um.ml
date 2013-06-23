@@ -200,13 +200,16 @@ let do_spin_cycle state : um_state * bool =
   | Output (c)     -> (print_endline "Output";
                        cont state')
   | Input (c)      -> (print_endline "Input";
-		       (* The universal machine waits for input on the console.
-			  When input arrives, the register C is loaded with the
-			  input, which must be between and including 0 and 255.
-			  If the end of input has been signaled, then the 
-			  register C is endowed with a uniform value pattern
-			  where every place is pregnant with the 1 bit. *)
-                       cont state')
+                       (* The universal machine waits for input on the console.
+                          When input arrives, the register C is loaded with the
+                          input, which must be between and including 0 and 255.
+                          If the end of input has been signaled, then the
+                          register C is endowed with a uniform value pattern
+                          where every place is pregnant with the 1 bit. *)
+                       let regs' = Array.copy rs in
+                       regs'.(c) <- (try int_of_char (input_char stdin)
+                         with End_of_file -> 0x11111111);
+                       cont {state' with regs = regs'})
   | Loadpr (b,c)   -> (print_endline "Loadpr";
                        cont state')
   | Orth (a, v)    -> (print_endline "Orth";
