@@ -1,6 +1,8 @@
 let verbose = ref false
 
-let cprint s = if !verbose then print_endline s else ()
+let cprint s = if !verbose then print_string s else ()
+
+let cprintln s = if !verbose then print_endline s else ()
 
 type platter = int
 type scroll = platter array
@@ -164,66 +166,102 @@ let do_spin_cycle state : um_state * bool =
   let state' = { state with finger_offset=succ fo } in
   let cont s = s, true in
   let halt s = s, false in
-  cprint "------------------------------------------------------";
+  cprintln "------------------------------------------------------";
   let state'', flag = match operation_of_platter ss.(0).(fo) with
-  | Condmv (a,b,c) -> (cprint "Condmv";
-                       cont state')
-  | Arridx (a,b,c) -> (cprint (Printf.sprintf "Arridx r[%d] := ss[%d][%d]\n" a rs.(b) rs.(c));
+  | Condmv (a,b,c) -> (cprintln "Condmv";
+		       (* The register A receives the value in register B,
+			  unless the register C contains 0. *)
+		       if rs.(c) = 0 then cont state' else
+			 let regs' = Array.copy rs in
+			 regs'.(a) <- rs.(b);
+			 cont {state' with regs = regs'})
+  | Arridx (a,b,c) -> (cprintln (Printf.sprintf "Arridx r%d := ss[r%d[%d]][r%d[%d]]" a b rs.(b) c rs.(c));
                        (* The register A receives the value stored at offset
                           in register C in the array identified by B. *)
                        let regs' = Array.copy rs in
                        regs'.(a) <- ss.(rs.(b)).(rs.(c));
                        cont {state' with regs = regs'})
-  | Arramd (a,b,c) -> (cprint "Arramd";
-                       cont state')
-  | Add (a,b,c)    -> (cprint "Add r[%d] := r[%d] + r[%d]";
+  | Arramd (a,b,c) -> (cprintln (Printf.sprintf "Arramd ss[r%d[%d][r%d[%d]] := r%d[%d]" a rs.(a) b rs.(b) c rs.(c));
+		       (* The array identified by A is amended at the offset
+			  in register B to store the value in register C. *)
+		       let ss' = Array.copy ss in
+		       let s' = Array.copy ss'.(rs.(a)) in
+                       s'.(rs.(b)) <- rs.(c);
+		       ss'.(rs.(a)) <- s';
+                       cont {state' with scrolls = ss'})
+  | Add (a,b,c)    -> (cprintln (Printf.sprintf "Add r%d := r%d[%d] + r%d[%d]" a b rs.(b) c rs.(c));
                        (* The register A receives the value in register B plus
                           the value in register C, modulo 2^32. *)
                        let regs' = Array.copy rs in
                        regs'.(a) <- (rs.(b) + rs.(c)) mod 0x100000000;
                        cont {state' with regs = regs'})
-  | Mult (a,b,c)   -> (cprint "Mult";
-                       cont state')
-  | Div (a,b,c)    -> (cprint "Div";
+  | Mult (a,b,c)   -> (cprintln (Printf.sprintf "Mult r%d := r%d[%d] * r%d[%d]" a b rs.(b) c rs.(c));
+		       (* The register A receives the value in register B times
+			  the value in register C, modulo 2^32. *)
+                       let regs' = Array.copy rs in
+                       regs'.(a) <- (rs.(b) * rs.(c)) mod 0x100000000;
+                       cont {state' with regs = regs'})
+  | Div (a,b,c)    -> (cprintln (Printf.sprintf "Div r%d := r%d[%d] / r%d[%d]" a b rs.(b) c rs.(c));
                        (* The register A receives the value in register B
                           divided by the value in register C, if any, where
                           each quantity is treated treated as an unsigned 32
                           bit number. *)
                        let regs' = Array.copy rs in
-                       regs'.(a) <- rs.(b) / rs.(c);
+                       regs'.(a) <- ((0xffffffff land rs.(b)) / (0xffffffff land rs.(c))) mod 0x100000000;
                        cont {state' with regs = regs'})
-  | Nand (a,b,c)   -> (cprint "Nand";
-                       cont state')
-  | Halt           -> (cprint "Halt";
+  | Nand (a,b,c)   -> (cprintln (Printf.sprintf "Nand r%d := ~(r%d[%d] /\\ r%d[%d])" a b rs.(b) c rs.(c));
+		       (* Each bit in the register A receives the 1 bit if
+			  either register B or register C has a 0 bit in that
+			  position.  Otherwise the bit in register A receives
+			  the 0 bit. *)
+                       let regs' = Array.copy rs in
+                       regs'.(a) <- (lnot (rs.(b) land rs.(c))) mod 0x100000000;
+                       cont {state' with regs = regs'})
+  | Halt           -> (cprintln "Halt";
                        (* The universal machine stops computation. *)
                        halt state')
-  | Alloc (b,c)    -> (cprint "Alloc";
+  | Alloc (b,c)    -> ((Printf.printf "Alloc b=r%d, cap=r%d[%d]\n" b c rs.(c));
                        (* A new array is created with a capacity of platters
                           commensurate to the value in the register C. This
                           new array is initialized entirely with platters
                           holding the value 0. A bit pattern not consisting of
                           exclusively the 0 bit, and that identifies no other
                           active allocated array, is placed in the B register. *)
-                       cont state')
-  | Aband (c)      -> (cprint (Printf.sprintf "Aband %d" rs.(c));
+		       let ss' = Array.copy ss in
+		       let regs' = Array.copy rs in
+		       let s = Array.make rs.(c) 0 in
+		       match avail_ss with
+			 [] -> failwith "No scrolls available"
+		       | h::t -> (ss'.(h) <- s;
+				  regs'.(b) <- h;
+				  cont {state' with regs=regs';
+					scrolls=ss'; avail_scrolls=t}))
+  | Aband (c)      -> ((Printf.printf "Aband %d\n" rs.(c));
                        (* The array identified by the register C is abandoned.
                           Future allocations may then reuse that identifier. *)
                        if rs.(c) = 0 then halt state'
                        else cont {state' with avail_scrolls = rs.(c)::avail_ss})
-  | Output (c)     -> (cprint "Output";
+  | Output (c)     -> (cprint "Output ";
+		       (* The value in the register C is displayed on the console
+			  immediately. Only values between and including 0 and 255
+			  are allowed. *)
+		       print_char (char_of_int rs.(c));
+		       if rs.(c) = int_of_char '\n' then flush stdout;
+		       cprintln "";
                        cont state')
-  | Input (c)      -> (cprint "Input";
+  | Input (c)      -> (cprintln "Input";
                        (* The universal machine waits for input on the console.
                           When input arrives, the register C is loaded with the
                           input, which must be between and including 0 and 255.
                           If the end of input has been signaled, then the
                           register C is endowed with a uniform value pattern
                           where every place is pregnant with the 1 bit. *)
+		       flush stdout;
                        let regs' = Array.copy rs in
                        regs'.(c) <- (try int_of_char (input_char stdin)
                          with End_of_file -> 0x11111111);
                        cont {state' with regs = regs'})
-  | Loadpr (b,c)   -> (cprint "Loadpr";
+  | Loadpr (b,c)   -> (cprintln (Printf.sprintf "Loadpr scroll %d, fo %08x" rs.(b) rs.(c));
                        (* The array identified by the B register is duplicated
                           and the duplicate shall replace the '0' array,
                           regardless of size. The execution finger is placed
@@ -237,9 +275,9 @@ let do_spin_cycle state : um_state * bool =
                           velocity. *)
                        if rs.(b) = 0 then cont {state' with finger_offset = rs.(c)}
                        else let ss' = Array.copy ss in
-                            ss'.(0) <- ss'.(b);
-                            cont {state' with finger_offset = rs.(c)})
-  | Orth (a, v)    -> (cprint "Orth";
+                            ss'.(0) <- ss'.(rs.(b));
+                            cont {state' with scrolls=ss'; finger_offset = rs.(c)})
+  | Orth (a, v)    -> (cprintln (Printf.sprintf "Orth r%d = %08x" a v);
                        (* The value indicated is loaded into the register A
                           forthwith. *)
                        let regs' = Array.copy rs in
@@ -254,8 +292,8 @@ let eval_prog f =
   in
   let init_state = init_um f in
   let st_final = spin init_state in
-  cprint "------------------------------------------------------";
-  cprint "Program complete";
+  cprintln "------------------------------------------------------";
+  cprintln "Program complete";
   print_state st_final;
-  cprint "------------------------------------------------------\n";
+  cprintln "------------------------------------------------------\n";
 
