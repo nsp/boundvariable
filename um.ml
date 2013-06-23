@@ -1,3 +1,7 @@
+let verbose = ref false
+
+let cprint s = if !verbose then print_endline s else ()
+
 type platter = int
 type scroll = platter array
 
@@ -13,7 +17,7 @@ let default_state = {
   scrolls = Array.make 32 (Array.make 0 0);
   finger_offset = 0,0;
   avail_scrolls = [1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17;
-		   18;19;20;21;22;23;24;25;26;27;28;29;30;31]
+                   18;19;20;21;22;23;24;25;26;27;28;29;30;31]
 }
 
 (* unwind and with_* functions from http://stackoverflow.com/a/11278170/34910 *)
@@ -47,19 +51,23 @@ let init_um name : um_state =
   with_input_file name read_scroll_from_chan
 
 let print_state { regs=rs; scrolls=ss; finger_offset=(fs,fo) } =
-  Printf.printf "  Finger scr/ofs: %08x/%08x\n" fs fo;
-  Printf.printf "  Registers:      %08x %08x %08x %08x\n"
-    rs.(0) rs.(1) rs.(2) rs.(3);
-  Printf.printf "                  %08x %08x %08x %08x\n"
-    rs.(4) rs.(5) rs.(6) rs.(7);
-  if (Array.length ss.(fs) - fo) > 2 then
-    Printf.printf "  Current scroll: %08x %08x %08x\n" ss.(fs).(fo) ss.(fs).(succ fo) ss.(fs).(succ (succ fo))
-  else if (Array.length ss.(fs) - fo) > 1 then
-    Printf.printf "  Current scroll: %08x %08x end\n" ss.(fs).(fo) ss.(fs).(succ fo)
-  else if (Array.length ss.(fs) - fo) > 0 then
-    Printf.printf "  Current scroll: %08x end\n" ss.(fs).(fo)
-  else
-    Printf.printf "  Current scroll: end\n";
+  if !verbose then (
+    Printf.printf   "  Finger scr/ofs: %08x/%08x\n" fs fo;
+    Printf.printf   "  Registers:      %08x %08x %08x %08x\n"
+      rs.(0) rs.(1) rs.(2) rs.(3);
+    Printf.printf   "                  %08x %08x %08x %08x\n"
+      rs.(4) rs.(5) rs.(6) rs.(7);
+    if (Array.length ss.(fs) - fo) > 2 then
+      Printf.printf "  Current scroll: %08x %08x %08x\n"
+        ss.(fs).(fo) ss.(fs).(succ fo) ss.(fs).(succ (succ fo))
+    else if (Array.length ss.(fs) - fo) > 1 then
+      Printf.printf "  Current scroll: %08x %08x end\n"
+        ss.(fs).(fo) ss.(fs).(succ fo)
+    else if (Array.length ss.(fs) - fo) > 0 then
+      Printf.printf "  Current scroll: %08x end\n" ss.(fs).(fo)
+    else
+      Printf.printf "  Current scroll: end\n")
+  else ()
 
 
 (***********************************************************)
@@ -152,31 +160,31 @@ let make_state ops =
     the resulting state and  flag (false=halted) **)
 let do_spin_cycle state : um_state * bool =
   let { regs=rs; finger_offset=(fs, fo);
-	scrolls=ss; avail_scrolls=avail_ss } = state in
+        scrolls=ss; avail_scrolls=avail_ss } = state in
   let state' = { state with finger_offset=(fs, succ fo) } in
   let cont s = s, true in
   let halt s = s, false in
-  print_endline "------------------------------------------------------";
+  cprint "------------------------------------------------------";
   let state'', flag = match operation_of_platter ss.(fs).(fo) with
-  | Condmv (a,b,c) -> (print_endline "Condmv";
+  | Condmv (a,b,c) -> (cprint "Condmv";
                        cont state')
-  | Arridx (a,b,c) -> (Printf.printf "Arridx r[%d] := ss[%d][%d]\n" a rs.(b) rs.(c);
+  | Arridx (a,b,c) -> (cprint (Printf.sprintf "Arridx r[%d] := ss[%d][%d]\n" a rs.(b) rs.(c));
                        (* The register A receives the value stored at offset
                           in register C in the array identified by B. *)
                        let regs' = Array.copy rs in
                        regs'.(a) <- ss.(rs.(b)).(rs.(c));
                        cont {state' with regs = regs'})
-  | Arramd (a,b,c) -> (print_endline "Arramd";
+  | Arramd (a,b,c) -> (cprint "Arramd";
                        cont state')
-  | Add (a,b,c)    -> (print_endline "Add r[%d] := r[%d] + r[%d]";
+  | Add (a,b,c)    -> (cprint "Add r[%d] := r[%d] + r[%d]";
                        (* The register A receives the value in register B plus
                           the value in register C, modulo 2^32. *)
                        let regs' = Array.copy rs in
                        regs'.(a) <- (rs.(b) + rs.(c)) mod 0x100000000;
                        cont {state' with regs = regs'})
-  | Mult (a,b,c)   -> (print_endline "Mult";
+  | Mult (a,b,c)   -> (cprint "Mult";
                        cont state')
-  | Div (a,b,c)    -> (print_endline "Div";
+  | Div (a,b,c)    -> (cprint "Div";
                        (* The register A receives the value in register B
                           divided by the value in register C, if any, where
                           each quantity is treated treated as an unsigned 32
@@ -184,12 +192,12 @@ let do_spin_cycle state : um_state * bool =
                        let regs' = Array.copy rs in
                        regs'.(a) <- rs.(b) / rs.(c);
                        cont {state' with regs = regs'})
-  | Nand (a,b,c)   -> (print_endline "Nand";
+  | Nand (a,b,c)   -> (cprint "Nand";
                        cont state')
-  | Halt           -> (print_endline "Halt";
+  | Halt           -> (cprint "Halt";
                        (* The universal machine stops computation. *)
                        halt state')
-  | Alloc (b,c)    -> (print_endline "Alloc";
+  | Alloc (b,c)    -> (cprint "Alloc";
                        (* A new array is created with a capacity of platters
                           commensurate to the value in the register C. This
                           new array is initialized entirely with platters
@@ -197,14 +205,14 @@ let do_spin_cycle state : um_state * bool =
                           exclusively the 0 bit, and that identifies no other
                           active allocated array, is placed in the B register. *)
                        cont state')
-  | Aband (c)      -> (Printf.printf "Aband %d" rs.(c);
+  | Aband (c)      -> (cprint (Printf.sprintf "Aband %d" rs.(c));
                        (* The array identified by the register C is abandoned.
                           Future allocations may then reuse that identifier. *)
-		       if rs.(c) = 0 then halt state'
-		       else cont {state' with avail_scrolls = rs.(c)::avail_ss})
-  | Output (c)     -> (print_endline "Output";
+                       if rs.(c) = 0 then halt state'
+                       else cont {state' with avail_scrolls = rs.(c)::avail_ss})
+  | Output (c)     -> (cprint "Output";
                        cont state')
-  | Input (c)      -> (print_endline "Input";
+  | Input (c)      -> (cprint "Input";
                        (* The universal machine waits for input on the console.
                           When input arrives, the register C is loaded with the
                           input, which must be between and including 0 and 255.
@@ -215,20 +223,20 @@ let do_spin_cycle state : um_state * bool =
                        regs'.(c) <- (try int_of_char (input_char stdin)
                          with End_of_file -> 0x11111111);
                        cont {state' with regs = regs'})
-  | Loadpr (b,c)   -> (print_endline "Loadpr";
-		       (* The array identified by the B register is duplicated
-			  and the duplicate shall replace the '0' array,
-			  regardless of size. The execution finger is placed
-			  to indicate the platter of this array that is
-			  described by the offset given in C, where the value
-			  0 denotes the first platter, 1 the second, et
-			  cetera.
+  | Loadpr (b,c)   -> (cprint "Loadpr";
+                       (* The array identified by the B register is duplicated
+                          and the duplicate shall replace the '0' array,
+                          regardless of size. The execution finger is placed
+                          to indicate the platter of this array that is
+                          described by the offset given in C, where the value
+                          0 denotes the first platter, 1 the second, et
+                          cetera.
 
-			  The '0' array shall be the most sublime choice for
-			  loading, and shall be handled with the utmost
-			  velocity. *)
+                          The '0' array shall be the most sublime choice for
+                          loading, and shall be handled with the utmost
+                          velocity. *)
                        cont state')
-  | Orth (a, v)    -> (print_endline "Orth";
+  | Orth (a, v)    -> (cprint "Orth";
                        (* The value indicated is loaded into the register A
                           forthwith. *)
                        let regs' = Array.copy rs in
@@ -243,8 +251,8 @@ let eval_prog f =
   in
   let init_state = init_um f in
   let st_final = spin init_state in
-  print_endline "------------------------------------------------------";
-  print_endline "Program complete";
+  cprint "------------------------------------------------------";
+  cprint "Program complete";
   print_state st_final;
-  print_endline "------------------------------------------------------\n";
+  cprint "------------------------------------------------------\n";
 
