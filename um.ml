@@ -4,13 +4,16 @@ type scroll = platter array
 type um_state = {
   regs : platter array;
   scrolls : scroll array;
-  finger_offset : int * int (* array, offset *)
+  finger_offset : int * int;
+  avail_scrolls : int list
 }
 
 let default_state = {
   regs = Array.make 8 0;
   scrolls = Array.make 32 (Array.make 0 0);
-  finger_offset = 0,0
+  finger_offset = 0,0;
+  avail_scrolls = [1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17;
+		   18;19;20;21;22;23;24;25;26;27;28;29;30;31]
 }
 
 (* unwind and with_* functions from http://stackoverflow.com/a/11278170/34910 *)
@@ -148,7 +151,8 @@ let make_state ops =
 (** [do_spin_cycle s] performs a single spin cycle, returns
     the resulting state and  flag (false=halted) **)
 let do_spin_cycle state : um_state * bool =
-  let { regs=rs; scrolls=ss; finger_offset=(fs, fo) } = state in
+  let { regs=rs; finger_offset=(fs, fo);
+	scrolls=ss; avail_scrolls=avail_ss } = state in
   let state' = { state with finger_offset=(fs, succ fo) } in
   let cont s = s, true in
   let halt s = s, false in
@@ -196,7 +200,7 @@ let do_spin_cycle state : um_state * bool =
   | Aband (c)      -> (print_endline "Aband";
                        (* The array identified by the register C is abandoned.
                           Future allocations may then reuse that identifier. *)
-                       cont state')
+                       cont {state' with avail_scrolls = rs.(c)::avail_ss})
   | Output (c)     -> (print_endline "Output";
                        cont state')
   | Input (c)      -> (print_endline "Input";
@@ -211,6 +215,17 @@ let do_spin_cycle state : um_state * bool =
                          with End_of_file -> 0x11111111);
                        cont {state' with regs = regs'})
   | Loadpr (b,c)   -> (print_endline "Loadpr";
+		       (* The array identified by the B register is duplicated
+			  and the duplicate shall replace the '0' array,
+			  regardless of size. The execution finger is placed
+			  to indicate the platter of this array that is
+			  described by the offset given in C, where the value
+			  0 denotes the first platter, 1 the second, et
+			  cetera.
+
+			  The '0' array shall be the most sublime choice for
+			  loading, and shall be handled with the utmost
+			  velocity. *)
                        cont state')
   | Orth (a, v)    -> (print_endline "Orth";
                        (* The value indicated is loaded into the register A
