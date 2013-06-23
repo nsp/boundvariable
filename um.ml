@@ -197,10 +197,11 @@ let do_spin_cycle state : um_state * bool =
                           exclusively the 0 bit, and that identifies no other
                           active allocated array, is placed in the B register. *)
                        cont state')
-  | Aband (c)      -> (print_endline "Aband";
+  | Aband (c)      -> (Printf.printf "Aband %d" rs.(c);
                        (* The array identified by the register C is abandoned.
                           Future allocations may then reuse that identifier. *)
-                       cont {state' with avail_scrolls = rs.(c)::avail_ss})
+		       if rs.(c) = 0 then halt state'
+		       else cont {state' with avail_scrolls = rs.(c)::avail_ss})
   | Output (c)     -> (print_endline "Output";
                        cont state')
   | Input (c)      -> (print_endline "Input";
