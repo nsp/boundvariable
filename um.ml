@@ -44,18 +44,20 @@ let init_um name : um_state =
   with_input_file name read_scroll_from_chan
 
 let print_state { regs=rs; scrolls=ss; finger_offset=(fs,fo) } =
-  Printf.printf "---------------------------------------\n";
-  Printf.printf "Finger scroll/offset: %08x/%08x\n" fs fo;
-  Printf.printf "Registers:            %08x %08x %08x %08x %08x %08x %08x %08x\n"
-    rs.(0) rs.(1) rs.(2) rs.(3) rs.(4) rs.(5) rs.(6) rs.(7);
+  Printf.printf "  Finger scr/ofs: %08x/%08x\n" fs fo;
+  Printf.printf "  Registers:      %08x %08x %08x %08x\n"
+    rs.(0) rs.(1) rs.(2) rs.(3);
+  Printf.printf "                  %08x %08x %08x %08x\n"
+    rs.(4) rs.(5) rs.(6) rs.(7);
   if (Array.length ss.(fs) - fo) > 2 then
-    Printf.printf "Current scroll:       %08x %08x %08x\n" ss.(fs).(fo) ss.(fs).(succ fo) ss.(fs).(succ (succ fo))
+    Printf.printf "  Current scroll: %08x %08x %08x\n" ss.(fs).(fo) ss.(fs).(succ fo) ss.(fs).(succ (succ fo))
   else if (Array.length ss.(fs) - fo) > 1 then
-    Printf.printf "Current scroll:       %08x %08x\n" ss.(fs).(fo) ss.(fs).(succ fo)
+    Printf.printf "  Current scroll: %08x %08x end\n" ss.(fs).(fo) ss.(fs).(succ fo)
   else if (Array.length ss.(fs) - fo) > 0 then
-    Printf.printf "Current scroll:       %08x\n" ss.(fs).(fo)
+    Printf.printf "  Current scroll: %08x end\n" ss.(fs).(fo)
   else
-    Printf.printf "Reached end of the scroll\n"
+    Printf.printf "  Current scroll: end\n";
+
 
 (***********************************************************)
 
@@ -85,36 +87,29 @@ let areg_shift = 6
 let breg_shift = 3
 let creg_shift = 0
 
-(*** util fns ***)
-
-let get_reg shift pl =
-  (pl lsr shift) land 0x7
-
-let get_areg = get_reg areg_shift
-
-let get_breg = get_reg breg_shift
-
-let get_creg = get_reg creg_shift
-
 (*** operation of platter ***)
 
 let operation_of_platter pl : operation =
+  let get_reg shift = (pl lsr shift) land 0x7 in
+  let a = get_reg areg_shift in
+  let b = get_reg breg_shift in
+  let c = get_reg creg_shift in
   let opcode = pl lsr opcode_shift in
   match opcode with
-    0 -> Halt
-  | 1 -> Halt
-  | 2 -> Halt
-  | 3 -> Halt
-  | 4 -> Halt
-  | 5 -> Halt
-  | 6 -> Halt
-  | 7 -> Halt
-  | 8 -> Halt
-  | 9 -> Halt
-  | 10 -> Halt
-  | 11 -> Halt
-  | 12 -> Halt
-  | 13 -> Halt
+     0 -> Condmv (a,b,c)
+  |  1 -> Arridx (a,b,c)
+  |  2 -> Arramd (a,b,c)
+  |  3 -> Add    (a,b,c)
+  |  4 -> Mult   (a,b,c)
+  |  5 -> Div    (a,b,c)
+  |  6 -> Nand   (a,b,c)
+  |  7 -> Halt
+  |  8 -> Alloc  (b,c)
+  |  9 -> Aband  (c)
+  | 10 -> Output (c)
+  | 11 -> Input  (c)
+  | 12 -> Loadpr (b,c)
+  | 13 -> Orth   ((pl lsr 25) land 7, (pl land 0x1ffffff))
   | _ -> failwith (Printf.sprintf "Invalid opcode (%d) in platter (%08x)" opcode pl)
 
 (*** platter_of_operation functions ***)
@@ -157,18 +152,47 @@ let do_spin_cycle state : um_state * bool =
   let state' = { state with finger_offset=(fs, succ fo) } in
   let cont s = s, true in
   let halt s = s, false in
-  match operation_of_platter ss.(fs).(fo) with
-  | Halt -> print_endline "Halting"; halt state'
-  | _ -> failwith (Printf.sprintf "Operation not implemented, platter=%x" ss.(fs).(fo))
+  print_endline "------------------------------------------------------";
+  let state'', flag = match operation_of_platter ss.(fs).(fo) with
+  | Condmv (a,b,c) -> (print_endline "Condmv";
+		       cont state')
+  | Arridx (a,b,c) -> (print_endline "Arridx";
+		       cont state')
+  | Arramd (a,b,c) -> (print_endline "Arramd";
+		       cont state')
+  | Add (a,b,c)    -> (print_endline "Add";
+		       cont state')
+  | Mult (a,b,c)   -> (print_endline "Mult";
+		       cont state')
+  | Div (a,b,c)    -> (print_endline "Div";
+		       cont state')
+  | Nand (a,b,c)   -> (print_endline "Nand";
+		       cont state')
+  | Halt           -> (print_endline "Halt";
+		       halt state')
+  | Alloc (b,c)    -> (print_endline "Alloc";
+		       cont state')
+  | Aband (c)      -> (print_endline "Aband";
+		       cont state')
+  | Output (c)     -> (print_endline "Output";
+		       cont state')
+  | Input (c)      -> (print_endline "Input";
+		       cont state')
+  | Loadpr (b,c)   -> (print_endline "Loadpr";
+		       cont state')
+  | Orth (a, v)    -> (print_endline "Orth";
+		       cont state')
+  in print_state state; state'', flag
 
 let eval_prog f =
   let rec spin st =
-    print_state st;
     let st', cont = do_spin_cycle st in
     if cont then spin st' else st'
   in
   let init_state = init_um f in
   let st_final = spin init_state in
-  print_endline "----------------\nProgram complete";
+  print_endline "------------------------------------------------------";
+  print_endline "Program complete";
   print_state st_final;
-  print_endline "------------------------------------------------\n"
+  print_endline "------------------------------------------------------\n";
+
