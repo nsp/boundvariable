@@ -155,35 +155,41 @@ let do_spin_cycle state : um_state * bool =
   print_endline "------------------------------------------------------";
   let state'', flag = match operation_of_platter ss.(fs).(fo) with
   | Condmv (a,b,c) -> (print_endline "Condmv";
-		       cont state')
-  | Arridx (a,b,c) -> (print_endline "Arridx";
-		       cont state')
+                       cont state')
+  | Arridx (a,b,c) -> (Printf.printf "Arridx r[%d] := ss[%d][%d]\n" a rs.(b) rs.(c);
+                       (* The register A receives the value stored at offset
+                          in register C in the array identified by B. *)
+                       let regs' = Array.copy rs in
+                       regs'.(a) <- ss.(rs.(b)).(rs.(c));
+                       cont {state' with regs = regs'})
   | Arramd (a,b,c) -> (print_endline "Arramd";
-		       cont state')
+                       cont state')
   | Add (a,b,c)    -> (print_endline "Add";
-		       cont state')
+                       cont state')
   | Mult (a,b,c)   -> (print_endline "Mult";
-		       cont state')
+                       cont state')
   | Div (a,b,c)    -> (print_endline "Div";
-		       cont state')
+                       cont state')
   | Nand (a,b,c)   -> (print_endline "Nand";
-		       cont state')
+                       cont state')
   | Halt           -> (print_endline "Halt";
-		       halt state')
+                       halt state')
   | Alloc (b,c)    -> (print_endline "Alloc";
-		       cont state')
+                       cont state')
   | Aband (c)      -> (print_endline "Aband";
-		       cont state')
+                       cont state')
   | Output (c)     -> (print_endline "Output";
-		       cont state')
+                       cont state')
   | Input (c)      -> (print_endline "Input";
-		       cont state')
+                       cont state')
   | Loadpr (b,c)   -> (print_endline "Loadpr";
-		       cont state')
+                       cont state')
   | Orth (a, v)    -> (print_endline "Orth";
-		       let regs' = Array.copy rs in
-		       regs'.(a) <- v;
-		       cont {state' with regs = regs'})
+		       (* The value indicated is loaded into the register A
+			  forthwith. *)
+                       let regs' = Array.copy rs in
+                       regs'.(a) <- v;
+                       cont {state' with regs = regs'})
   in print_state state; state'', flag
 
 let eval_prog f =
