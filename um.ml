@@ -8,14 +8,14 @@ type scroll = platter array
 type um_state = {
   regs : platter array;
   scrolls : scroll array;
-  finger_offset : int * int;
+  finger_offset : int;
   avail_scrolls : int list
 }
 
 let default_state = {
   regs = Array.make 8 0;
   scrolls = Array.make 32 (Array.make 0 0);
-  finger_offset = 0,0;
+  finger_offset = 0;
   avail_scrolls = [1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17;
                    18;19;20;21;22;23;24;25;26;27;28;29;30;31]
 }
@@ -50,21 +50,21 @@ let init_um name : um_state =
   in
   with_input_file name read_scroll_from_chan
 
-let print_state { regs=rs; scrolls=ss; finger_offset=(fs,fo) } =
+let print_state { regs=rs; scrolls=ss; finger_offset=fo } =
   if !verbose then (
-    Printf.printf   "  Finger scr/ofs: %08x/%08x\n" fs fo;
+    Printf.printf   "  Finger ofs:     %08x\n" fo;
     Printf.printf   "  Registers:      %08x %08x %08x %08x\n"
       rs.(0) rs.(1) rs.(2) rs.(3);
     Printf.printf   "                  %08x %08x %08x %08x\n"
       rs.(4) rs.(5) rs.(6) rs.(7);
-    if (Array.length ss.(fs) - fo) > 2 then
+    if (Array.length ss.(0) - fo) > 2 then
       Printf.printf "  Current scroll: %08x %08x %08x\n"
-        ss.(fs).(fo) ss.(fs).(succ fo) ss.(fs).(succ (succ fo))
-    else if (Array.length ss.(fs) - fo) > 1 then
+        ss.(0).(fo) ss.(0).(succ fo) ss.(0).(succ (succ fo))
+    else if (Array.length ss.(0) - fo) > 1 then
       Printf.printf "  Current scroll: %08x %08x end\n"
-        ss.(fs).(fo) ss.(fs).(succ fo)
-    else if (Array.length ss.(fs) - fo) > 0 then
-      Printf.printf "  Current scroll: %08x end\n" ss.(fs).(fo)
+        ss.(0).(fo) ss.(0).(succ fo)
+    else if (Array.length ss.(0) - fo) > 0 then
+      Printf.printf "  Current scroll: %08x end\n" ss.(0).(fo)
     else
       Printf.printf "  Current scroll: end\n")
   else ()
@@ -159,13 +159,13 @@ let make_state ops =
 (** [do_spin_cycle s] performs a single spin cycle, returns
     the resulting state and  flag (false=halted) **)
 let do_spin_cycle state : um_state * bool =
-  let { regs=rs; finger_offset=(fs, fo);
+  let { regs=rs; finger_offset=fo;
         scrolls=ss; avail_scrolls=avail_ss } = state in
-  let state' = { state with finger_offset=(fs, succ fo) } in
+  let state' = { state with finger_offset=succ fo } in
   let cont s = s, true in
   let halt s = s, false in
   cprint "------------------------------------------------------";
-  let state'', flag = match operation_of_platter ss.(fs).(fo) with
+  let state'', flag = match operation_of_platter ss.(0).(fo) with
   | Condmv (a,b,c) -> (cprint "Condmv";
                        cont state')
   | Arridx (a,b,c) -> (cprint (Printf.sprintf "Arridx r[%d] := ss[%d][%d]\n" a rs.(b) rs.(c));
@@ -235,7 +235,10 @@ let do_spin_cycle state : um_state * bool =
                           The '0' array shall be the most sublime choice for
                           loading, and shall be handled with the utmost
                           velocity. *)
-                       cont state')
+                       if rs.(b) = 0 then cont {state' with finger_offset = rs.(c)}
+                       else let ss' = Array.copy ss in
+                            ss'.(0) <- ss'.(b);
+                            cont {state' with finger_offset = rs.(c)})
   | Orth (a, v)    -> (cprint "Orth";
                        (* The value indicated is loaded into the register A
                           forthwith. *)
