@@ -181,7 +181,9 @@ let do_spin_cycle state : um_state * bool =
   | Loadpr (b,c)   -> (print_endline "Loadpr";
 		       cont state')
   | Orth (a, v)    -> (print_endline "Orth";
-		       cont state')
+		       let regs' = Array.copy rs in
+		       regs'.(a) <- v;
+		       cont {state' with regs = regs'})
   in print_state state; state'', flag
 
 let eval_prog f =
