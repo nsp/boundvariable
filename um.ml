@@ -1,7 +1,33 @@
+(*** Constants ***)
+
+let opcode_shift = 4+3*8
+let areg_shift = 6
+let breg_shift = 3
+let creg_shift = 0
+let INT_MOD = 0x100000000
+let ALL_ONES = 0xffffffff
+
+(*** Utils ***)
 let verbose = ref false
 
 let cprint s = if !verbose then print_endline s else ()
 
+(* unwind and with_* functions from http://stackoverflow.com/a/11278170/34910 *)
+let unwind ~protect f x =
+  let module E = struct type 'a t = Left of 'a | Right of exn end in
+  let res = try E.Left (f x) with e -> E.Right e in
+  let ()  = protect x in
+  match res with
+  | E.Left  y -> y
+  | E.Right e -> raise e
+
+let with_input_channel inch f =
+  unwind ~protect:close_in f inch
+
+let with_input_file fname =
+  with_input_channel (open_in_bin fname)
+
+(*** Types ***)
 type platter = int
 type scroll = platter array
 
@@ -20,21 +46,6 @@ let default_state = {
                    18;19;20;21;22;23;24;25;26;27;28;29;30;31]
 }
 
-(* unwind and with_* functions from http://stackoverflow.com/a/11278170/34910 *)
-let unwind ~protect f x =
-  let module E = struct type 'a t = Left of 'a | Right of exn end in
-  let res = try E.Left (f x) with e -> E.Right e in
-  let ()  = protect x in
-  match res with
-  | E.Left  y -> y
-  | E.Right e -> raise e
-
-let with_input_channel inch f =
-  unwind ~protect:close_in f inch
-
-let with_input_file fname =
-  with_input_channel (open_in_bin fname)
-
 (** [init_um f] initializes universal machine with contents of
     scroll 0 taken from file [f]**)
 let init_um name : um_state =
@@ -43,7 +54,7 @@ let init_um name : um_state =
     let scrl = Array.make len 0 in
     let scrls = Array.copy default_state.scrolls in
     (for i = 0 to pred len do
-        scrl.(i) <- 0xffffffff land (input_binary_int chan)
+        scrl.(i) <- ALL_ONES land (input_binary_int chan)
     done);
     scrls.(0) <- scrl;
     { default_state with scrolls = scrls }
@@ -69,7 +80,6 @@ let print_state { regs=rs; scrolls=ss; finger_offset=(fs,fo) } =
       Printf.printf "  Current scroll: end\n")
   else ()
 
-
 (***********************************************************)
 
 type reg = int (* 3-bit # *)
@@ -90,14 +100,6 @@ type operation =
   | Input of reg
   | Loadpr of reg * reg
   | Orth of reg * value
-
-(*** Constants ***)
-
-let opcode_shift = 4+3*8
-let areg_shift = 6
-let breg_shift = 3
-let creg_shift = 0
-let int_mod = 4294967296
 
 (*** operation of platter ***)
 
@@ -181,7 +183,7 @@ let do_spin_cycle state : um_state * bool =
                        (* The register A receives the value in register B plus
                           the value in register C, modulo 2^32. *)
                        let regs' = Array.copy rs in
-                       regs'.(a) <- (rs.(b) + rs.(c)) mod 0x100000000;
+                       regs'.(a) <- (rs.(b) + rs.(c)) mod INT_MOD;
                        cont {state' with regs = regs'})
   | Mult (a,b,c)   -> 
     (
@@ -189,7 +191,7 @@ let do_spin_cycle state : um_state * bool =
 
       (* reg A gets reg B x reg C modulo 2^32 *)
       let regs' = Array.copy rs in
-      regs'.(a) <- (regs'.(b) * regs'.(c)) mod int_mod;
+      regs'.(a) <- (regs'.(b) * regs'.(c)) mod INT_MOD;
 
       cont {state' with regs = regs'}
     )
@@ -230,7 +232,7 @@ let do_spin_cycle state : um_state * bool =
                           where every place is pregnant with the 1 bit. *)
                        let regs' = Array.copy rs in
                        regs'.(c) <- (try int_of_char (input_char stdin)
-                         with End_of_file -> 0x11111111);
+                         with End_of_file -> ALL_ONES);
                        cont {state' with regs = regs'})
   | Loadpr (b,c)   -> (cprint "Loadpr";
                        (* The array identified by the B register is duplicated
