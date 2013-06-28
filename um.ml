@@ -7,12 +7,21 @@ let cprintln s = if !verbose then print_endline s else ()
 type platter = int
 type scroll = platter array
 
+type scroll_gen = int * int list
+
+let alloc_scrl (next, aband) = match aband with
+    h::t -> h, (next, t)
+  | [] -> if next = 0xffffffff then failwith "out of scroll IDs"
+    else next, (succ next, [])
+
+let aband_scrl (next, aband) idx = next, idx::aband
+
 type um_state = {
   r0 : platter; r1 : platter; r2 : platter; r3 : platter;
   r4 : platter; r5 : platter; r6 : platter; r7 : platter;
   scrolls : scroll Ptmap.t;
   finger_offset : int;
-  avail_scrolls : int list
+  scrl_gen : scroll_gen
 }
 
 let write_reg st n v = match n with
@@ -43,8 +52,7 @@ let default_state = {
   r4 = 0; r5 = 0; r6 = 0; r7 = 0;
   scrolls = Ptmap.empty;
   finger_offset = 0;
-  avail_scrolls = [1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17;
-                   18;19;20;21;22;23;24;25;26;27;28;29;30;31]
+  scrl_gen = 1, []
 }
 
 (* unwind and with_* functions from http://stackoverflow.com/a/11278170/34910 *)
@@ -76,7 +84,7 @@ let init_um name : um_state =
   with_input_file name read_scroll_from_chan
 
 let print_state { r0=r0; r1=r1; r2=r2; r3=r3; r4=r4; r5=r5; r6=r6; r7=r7;
-		  scrolls=ss; finger_offset=fo } =
+                  scrolls=ss; finger_offset=fo } =
   if !verbose then (
     Printf.printf   "  Finger ofs:     %08x\n" fo;
     Printf.printf   "  Registers:      %08x %08x %08x %08x\n"
@@ -183,8 +191,7 @@ let make_state ops =
 (** [do_spin_cycle s] performs a single spin cycle, returns
     the resulting state and  flag (false=halted) **)
 let do_spin_cycle state : um_state * bool =
-  let { finger_offset=fo;
-        scrolls=ss; avail_scrolls=avail_ss } = state in
+  let { finger_offset=fo; scrolls=ss; scrl_gen=scrl_gen } = state in
   let state' = { state with finger_offset=succ fo } in
   let rr = read_reg state' in
   let wr = write_reg state' in
@@ -229,22 +236,21 @@ let do_spin_cycle state : um_state * bool =
   | Halt           -> (cprintln "Halt";
                        (* The universal machine stops computation. *)
                        halt state')
-  | Alloc (b,c)    -> ((Printf.printf "Alloc b=r%d, cap=r%d[%d]\n" b c (rr c));
+  | Alloc (b,c)    -> (cprintln (Printf.sprintf "Alloc b=r%d, cap=r%d[%d]\n" b c (rr c));
                        (* A new array is created with a capacity of platters
                           commensurate to the value in the register C. This
                           new array is initialized entirely with platters
                           holding the value 0. A bit pattern not consisting of
                           exclusively the 0 bit, and that identifies no other
                           active allocated array, is placed in the B register. *)
-                       match avail_ss with
-                         [] -> failwith "No scrolls available"
-                       | h::t -> cont (write_reg {state' with avail_scrolls=t;
-                         scrolls=(Ptmap.add h (Array.make (rr c) 0) ss)} b h))
-  | Aband (c)      -> ((Printf.printf "Aband %d\n" (rr c));
+                       let id, gen = alloc_scrl scrl_gen in
+                       cont (write_reg {state' with scrl_gen=gen;
+                         scrolls=(Ptmap.add id (Array.make (rr c) 0) ss)} b id))
+  | Aband (c)      -> (cprintln (Printf.sprintf "Aband %d\n" (rr c));
                        (* The array identified by the register C is abandoned.
                           Future allocations may then reuse that identifier. *)
                        if (rr c) = 0 then halt state'
-                       else cont {state' with avail_scrolls = (rr c)::avail_ss})
+                       else cont {state' with scrl_gen=aband_scrl scrl_gen (rr c)})
   | Output (c)     -> (cprint "Output ";
                        (* The value in the register C is displayed on the console
                           immediately. Only values between and including 0 and 255
@@ -262,7 +268,7 @@ let do_spin_cycle state : um_state * bool =
                           where every place is pregnant with the 1 bit. *)
                        flush stdout;
                        cont (wr c (try int_of_char (input_char stdin)
-                         with End_of_file -> 0x11111111)))
+                         with End_of_file -> 0xffffffff)))
   | Loadpr (b,c)   -> (cprintln (Printf.sprintf "Loadpr scroll %d, fo %08x" (rr b) (rr c));
                        (* The array identified by the B register is duplicated
                           and the duplicate shall replace the '0' array,
