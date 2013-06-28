@@ -8,14 +8,39 @@ type platter = int
 type scroll = platter array
 
 type um_state = {
-  regs : platter array;
+  r0 : platter; r1 : platter; r2 : platter; r3 : platter;
+  r4 : platter; r5 : platter; r6 : platter; r7 : platter;
   scrolls : scroll Ptmap.t;
   finger_offset : int;
   avail_scrolls : int list
 }
 
+let write_reg st n v = match n with
+    0 -> {st with r0=v}
+  | 1 -> {st with r1=v}
+  | 2 -> {st with r2=v}
+  | 3 -> {st with r3=v}
+  | 4 -> {st with r4=v}
+  | 5 -> {st with r5=v}
+  | 6 -> {st with r6=v}
+  | 7 -> {st with r7=v}
+  | _ -> failwith "bad reg #"
+
+let read_reg st = function
+    0 -> st.r0
+  | 1 -> st.r1
+  | 2 -> st.r2
+  | 3 -> st.r3
+  | 4 -> st.r4
+  | 5 -> st.r5
+  | 6 -> st.r6
+  | 7 -> st.r7
+  | _ -> failwith "bad reg #"
+
+
 let default_state = {
-  regs = Array.make 8 0;
+  r0 = 0; r1 = 0; r2 = 0; r3 = 0;
+  r4 = 0; r5 = 0; r6 = 0; r7 = 0;
   scrolls = Ptmap.empty;
   finger_offset = 0;
   avail_scrolls = [1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17;
@@ -50,13 +75,14 @@ let init_um name : um_state =
   in
   with_input_file name read_scroll_from_chan
 
-let print_state { regs=rs; scrolls=ss; finger_offset=fo } =
+let print_state { r0=r0; r1=r1; r2=r2; r3=r3; r4=r4; r5=r5; r6=r6; r7=r7;
+		  scrolls=ss; finger_offset=fo } =
   if !verbose then (
     Printf.printf   "  Finger ofs:     %08x\n" fo;
     Printf.printf   "  Registers:      %08x %08x %08x %08x\n"
-      rs.(0) rs.(1) rs.(2) rs.(3);
+      r0 r1 r2 r3;
     Printf.printf   "                  %08x %08x %08x %08x\n"
-      rs.(4) rs.(5) rs.(6) rs.(7);
+      r4 r5 r6 r7;
     if (Array.length (Ptmap.find 0 ss) - fo) > 2 then
       Printf.printf "  Current scroll: %08x %08x %08x\n"
         (Ptmap.find 0 ss).(fo) (Ptmap.find 0 ss).(succ fo) (Ptmap.find 0 ss).(succ (succ fo))
@@ -157,9 +183,11 @@ let make_state ops =
 (** [do_spin_cycle s] performs a single spin cycle, returns
     the resulting state and  flag (false=halted) **)
 let do_spin_cycle state : um_state * bool =
-  let { regs=rs; finger_offset=fo;
+  let { finger_offset=fo;
         scrolls=ss; avail_scrolls=avail_ss } = state in
   let state' = { state with finger_offset=succ fo } in
+  let rr = read_reg state' in
+  let wr = write_reg state' in
   let cont s = s, true in
   let halt s = s, false in
   cprintln "------------------------------------------------------";
@@ -167,77 +195,62 @@ let do_spin_cycle state : um_state * bool =
   | Condmv (a,b,c) -> (cprintln "Condmv";
                        (* The register A receives the value in register B,
                           unless the register C contains 0. *)
-                       if rs.(c) = 0 then cont state' else
-                         let regs' = Array.copy rs in
-                         regs'.(a) <- rs.(b);
-                         cont {state' with regs = regs'})
-  | Arridx (a,b,c) -> (cprintln (Printf.sprintf "Arridx r%d := ss[r%d[%d]][r%d[%d]]" a b rs.(b) c rs.(c));
+                       if 0 = rr c then cont state' else
+                         cont (wr a (rr b)))
+  | Arridx (a,b,c) -> (cprintln (Printf.sprintf "Arridx r%d := ss[r%d[%d]][r%d[%d]]" a b (rr b) c (rr c));
                        (* The register A receives the value stored at offset
                           in register C in the array identified by B. *)
-                       let regs' = Array.copy rs in
-                       regs'.(a) <- (Ptmap.find rs.(b) ss).(rs.(c));
-                       cont {state' with regs = regs'})
-  | Arramd (a,b,c) -> (cprintln (Printf.sprintf "Arramd ss[r%d[%d][r%d[%d]] := r%d[%d]" a rs.(a) b rs.(b) c rs.(c));
+                       cont (wr a (Ptmap.find (rr b) ss).(rr c)))
+  | Arramd (a,b,c) -> (cprintln (Printf.sprintf "Arramd ss[r%d[%d][r%d[%d]] := r%d[%d]" a (rr a) b (rr b) c (rr c));
                        (* The array identified by A is amended at the offset
                           in register B to store the value in register C. *)
-                       (Ptmap.find rs.(a) ss).(rs.(b)) <- rs.(c);
+                       (Ptmap.find (rr a) ss).((rr b)) <- (rr c);
                        cont state')
-  | Add (a,b,c)    -> (cprintln (Printf.sprintf "Add r%d := r%d[%d] + r%d[%d]" a b rs.(b) c rs.(c));
+  | Add (a,b,c)    -> (cprintln (Printf.sprintf "Add r%d := r%d[%d] + r%d[%d]" a b (rr b) c (rr c));
                        (* The register A receives the value in register B plus
                           the value in register C, modulo 2^32. *)
-                       let regs' = Array.copy rs in
-                       regs'.(a) <- (rs.(b) + rs.(c)) mod 0x100000000;
-                       cont {state' with regs = regs'})
-  | Mult (a,b,c)   -> (cprintln (Printf.sprintf "Mult r%d := r%d[%d] * r%d[%d]" a b rs.(b) c rs.(c));
+                       cont (wr a (((rr b) + (rr c)) mod 0x100000000)))
+  | Mult (a,b,c)   -> (cprintln (Printf.sprintf "Mult r%d := r%d[%d] * r%d[%d]" a b (rr b) c (rr c));
                        (* The register A receives the value in register B times
                           the value in register C, modulo 2^32. *)
-                       let regs' = Array.copy rs in
-                       regs'.(a) <- (rs.(b) * rs.(c)) mod 0x100000000;
-                       cont {state' with regs = regs'})
-  | Div (a,b,c)    -> (cprintln (Printf.sprintf "Div r%d := r%d[%d] / r%d[%d]" a b rs.(b) c rs.(c));
+                       cont (wr a (((rr b) * (rr c)) mod 0x100000000)))
+  | Div (a,b,c)    -> (cprintln (Printf.sprintf "Div r%d := r%d[%d] / r%d[%d]" a b (rr b) c (rr c));
                        (* The register A receives the value in register B
                           divided by the value in register C, if any, where
                           each quantity is treated treated as an unsigned 32
                           bit number. *)
-                       let regs' = Array.copy rs in
-                       regs'.(a) <- ((0xffffffff land rs.(b)) / (0xffffffff land rs.(c))) mod 0x100000000;
-                       cont {state' with regs = regs'})
-  | Nand (a,b,c)   -> (cprintln (Printf.sprintf "Nand r%d := ~(r%d[%d] /\\ r%d[%d])" a b rs.(b) c rs.(c));
+                       cont (wr a (((0xffffffff land (rr b)) / (0xffffffff land (rr c))) mod 0x100000000)))
+  | Nand (a,b,c)   -> (cprintln (Printf.sprintf "Nand r%d := ~(r%d[%d] /\\ r%d[%d])" a b (rr b) c (rr c));
                        (* Each bit in the register A receives the 1 bit if
                           either register B or register C has a 0 bit in that
                           position.  Otherwise the bit in register A receives
                           the 0 bit. *)
-                       let regs' = Array.copy rs in
-                       regs'.(a) <- (lnot (rs.(b) land rs.(c))) mod 0x100000000;
-                       cont {state' with regs = regs'})
+                       cont (wr a ((lnot ((rr b) land (rr c))) mod 0x100000000)));
   | Halt           -> (cprintln "Halt";
                        (* The universal machine stops computation. *)
                        halt state')
-  | Alloc (b,c)    -> ((Printf.printf "Alloc b=r%d, cap=r%d[%d]\n" b c rs.(c));
+  | Alloc (b,c)    -> ((Printf.printf "Alloc b=r%d, cap=r%d[%d]\n" b c (rr c));
                        (* A new array is created with a capacity of platters
                           commensurate to the value in the register C. This
                           new array is initialized entirely with platters
                           holding the value 0. A bit pattern not consisting of
                           exclusively the 0 bit, and that identifies no other
                           active allocated array, is placed in the B register. *)
-                       let regs' = Array.copy rs in
                        match avail_ss with
                          [] -> failwith "No scrolls available"
-                       | h::t -> (
-                                  regs'.(b) <- h;
-                                  cont {state' with regs=regs'; avail_scrolls=t;
-                                        scrolls=(Ptmap.add h (Array.make rs.(c) 0) ss)}))
-  | Aband (c)      -> ((Printf.printf "Aband %d\n" rs.(c));
+                       | h::t -> cont (write_reg {state' with avail_scrolls=t;
+                         scrolls=(Ptmap.add h (Array.make (rr c) 0) ss)} b h))
+  | Aband (c)      -> ((Printf.printf "Aband %d\n" (rr c));
                        (* The array identified by the register C is abandoned.
                           Future allocations may then reuse that identifier. *)
-                       if rs.(c) = 0 then halt state'
-                       else cont {state' with avail_scrolls = rs.(c)::avail_ss})
+                       if (rr c) = 0 then halt state'
+                       else cont {state' with avail_scrolls = (rr c)::avail_ss})
   | Output (c)     -> (cprint "Output ";
                        (* The value in the register C is displayed on the console
                           immediately. Only values between and including 0 and 255
                           are allowed. *)
-                       print_char (char_of_int rs.(c));
-                       if rs.(c) = int_of_char '\n' then flush stdout;
+                       print_char (char_of_int (rr c));
+                       if (rr c) = int_of_char '\n' then flush stdout;
                        cprintln "";
                        cont state')
   | Input (c)      -> (cprintln "Input";
@@ -248,11 +261,9 @@ let do_spin_cycle state : um_state * bool =
                           register C is endowed with a uniform value pattern
                           where every place is pregnant with the 1 bit. *)
                        flush stdout;
-                       let regs' = Array.copy rs in
-                       regs'.(c) <- (try int_of_char (input_char stdin)
-                         with End_of_file -> 0x11111111);
-                       cont {state' with regs = regs'})
-  | Loadpr (b,c)   -> (cprintln (Printf.sprintf "Loadpr scroll %d, fo %08x" rs.(b) rs.(c));
+                       cont (wr c (try int_of_char (input_char stdin)
+                         with End_of_file -> 0x11111111)))
+  | Loadpr (b,c)   -> (cprintln (Printf.sprintf "Loadpr scroll %d, fo %08x" (rr b) (rr c));
                        (* The array identified by the B register is duplicated
                           and the duplicate shall replace the '0' array,
                           regardless of size. The execution finger is placed
@@ -264,15 +275,13 @@ let do_spin_cycle state : um_state * bool =
                           The '0' array shall be the most sublime choice for
                           loading, and shall be handled with the utmost
                           velocity. *)
-                       if rs.(b) = 0 then cont {state' with finger_offset = rs.(c)}
-                       else let s' = Array.copy (Ptmap.find rs.(b) ss) in
-                            cont {state' with scrolls=(Ptmap.add 0 s' ss); finger_offset = rs.(c)})
+                       if (rr b) = 0 then cont {state' with finger_offset = (rr c)}
+                       else let s' = Array.copy (Ptmap.find (rr b) ss) in
+                            cont {state' with scrolls=(Ptmap.add 0 s' ss); finger_offset = (rr c)})
   | Orth (a, v)    -> (cprintln (Printf.sprintf "Orth r%d = %08x" a v);
                        (* The value indicated is loaded into the register A
                           forthwith. *)
-                       let regs' = Array.copy rs in
-                       regs'.(a) <- v;
-                       cont {state' with regs = regs'})
+                       cont (wr a v))
   in print_state state; state'', flag
 
 let eval_prog f =
