@@ -192,9 +192,20 @@ let do_spin_cycle state : um_state * bool =
   | Alloc (b,c)    -> (print_endline "Alloc";
 		       cont state')
   | Aband (c)      -> (print_endline "Aband";
-		       cont state')
-  | Output (c)     -> (print_endline "Output";
-		       cont state')
+           cont state')
+  | Output (c)     ->
+
+    (
+      print_endline "Output";
+
+      (* Value in reg C is printed to the console *)
+      (* Only values 0 - 255 are alllowed *)
+      if (rs.(c) >= 0 && rs.(c) <= 255)
+      then (print_int rs.(c); print_newline ());
+
+      cont state'
+    )
+
   | Input (c)      -> (print_endline "Input";
 		       cont state')
   | Loadpr (b,c)   -> (print_endline "Loadpr";
