@@ -167,11 +167,24 @@ let do_spin_cycle state : um_state * bool =
       cont { state' with regs = regs' }
     )
   | Arridx (a,b,c) -> (print_endline "Arridx";
-		       cont state')
-  | Arramd (a,b,c) -> (print_endline "Arramd";
-		       cont state')
+                      cont state')
+  | Arramd (a,b,c) ->
+
+    (
+      print_endline "Arramd";
+      print_endline (Printf.sprintf "Arramd ss[%d][%d] := %d\n" a rs.(b) rs.(c));
+
+      let regs' = Array.copy rs in
+      let ss' = Array.copy ss in
+      ss'.(regs'.(a)).(regs'.(b)) <- regs'.(c);
+      (* The array identified by A is amended at the offset *)
+      (* in register B to store the value in register C. *)
+
+      cont {{ state' with scrolls = ss' } with regs = regs' }
+    )
+
   | Add (a,b,c)    -> (print_endline "Add";
-		       cont state')
+           cont state')
   | Mult (a,b,c)   ->
     (
       print_endline "Mult";
@@ -180,7 +193,7 @@ let do_spin_cycle state : um_state * bool =
       let regs' = Array.copy rs in
       regs'.(a) <- (regs'.(b) * regs'.(c)) mod int_mod;
 
-      cont {state' with regs = regs'}
+      cont { state' with regs = regs' }
     )
 
   | Div (a,b,c)    -> (print_endline "Div";
@@ -207,13 +220,31 @@ let do_spin_cycle state : um_state * bool =
     )
 
   | Input (c)      -> (print_endline "Input";
-		       cont state')
-  | Loadpr (b,c)   -> (print_endline "Loadpr";
-		       cont state')
+           cont state')
+  | Loadpr (b,c)   ->
+
+    (
+      print_endline "Loadpr";
+
+      (* The array identified by the B register is duplicated *)
+      (* and the duplicate shall replace the '0' array, *)
+      (* regardless of size. The execution finger is placed *)
+      (* to indicate the platter of this array that is *)
+      (* described by the offset given in C, where the value *)
+      (* 0 denotes the first platter, 1 the second, et *)
+      (* cetera. *)
+
+      (* The '0' array shall be the most sublime choice for *)
+      (* loading, and shall be handled with the utmost *)
+      (* velocity. *)
+
+      cont state'
+    )
+
   | Orth (a, v)    -> (print_endline "Orth";
-		       let regs' = Array.copy rs in
-		       regs'.(a) <- v;
-		       cont {state' with regs = regs'})
+           let regs' = Array.copy rs in
+           regs'.(a) <- v;
+           cont {state' with regs = regs'})
   in print_state state; state'', flag
 
 let eval_prog f =
