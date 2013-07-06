@@ -155,8 +155,17 @@ let do_spin_cycle state : um_state * bool =
   let halt s = s, false in
   print_endline "------------------------------------------------------";
   let state'', flag = match operation_of_platter ss.(fs).(fo) with
-  | Condmv (a,b,c) -> (print_endline "Condmv";
-		       cont state')
+  | Condmv (a,b,c) ->
+    (
+      print_endline "Condmv";
+
+      (* The register A receives the value in register B, *)
+      (* unless the register C contains 0. *)
+      let regs' = Array.copy rs in
+      regs'.(a) <- if (regs'.(c) = 0) then regs'.(a) else regs'.(b);
+
+      cont { state' with regs = regs' }
+    )
   | Arridx (a,b,c) -> (print_endline "Arridx";
 		       cont state')
   | Arramd (a,b,c) -> (print_endline "Arramd";
