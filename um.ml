@@ -216,23 +216,23 @@ let do_spin_cycle state : um_state * bool =
   | Add (a,b,c)    -> (cprintln (Printf.sprintf "Add r%d := r%d[%d] + r%d[%d]" a b (rr b) c (rr c));
                        (* The register A receives the value in register B plus
                           the value in register C, modulo 2^32. *)
-                       cont (wr a (((rr b) + (rr c)) mod 0x100000000)))
+                       cont (wr a (((rr b) + (rr c)) land 0xffffffff)))
   | Mult (a,b,c)   -> (cprintln (Printf.sprintf "Mult r%d := r%d[%d] * r%d[%d]" a b (rr b) c (rr c));
                        (* The register A receives the value in register B times
                           the value in register C, modulo 2^32. *)
-                       cont (wr a (((rr b) * (rr c)) mod 0x100000000)))
+                       cont (wr a (((rr b) * (rr c)) land 0xffffffff)))
   | Div (a,b,c)    -> (cprintln (Printf.sprintf "Div r%d := r%d[%d] / r%d[%d]" a b (rr b) c (rr c));
                        (* The register A receives the value in register B
                           divided by the value in register C, if any, where
                           each quantity is treated treated as an unsigned 32
                           bit number. *)
-                       cont (wr a (((0xffffffff land (rr b)) / (0xffffffff land (rr c))) mod 0x100000000)))
+                       cont (wr a (((rr b) / (rr c)) land 0xffffffff)))
   | Nand (a,b,c)   -> (cprintln (Printf.sprintf "Nand r%d := ~(r%d[%d] /\\ r%d[%d])" a b (rr b) c (rr c));
                        (* Each bit in the register A receives the 1 bit if
                           either register B or register C has a 0 bit in that
                           position.  Otherwise the bit in register A receives
                           the 0 bit. *)
-                       cont (wr a ((lnot ((rr b) land (rr c))) mod 0x100000000)));
+                       cont (wr a ((lnot ((rr b) land (rr c))) land 0xffffffff)));
   | Halt           -> (cprintln "Halt";
                        (* The universal machine stops computation. *)
                        halt state')
@@ -245,7 +245,7 @@ let do_spin_cycle state : um_state * bool =
                           active allocated array, is placed in the B register. *)
                        let id, gen = alloc_scrl scrl_gen in
                        cont (write_reg {state' with scrl_gen=gen;
-                         scrolls=(Ptmap.add id (Array.make (rr c) 0) ss)} b id))
+                               scrolls=(Ptmap.add id (Array.make (rr c) 0) ss)} b id))
   | Aband (c)      -> (cprintln (Printf.sprintf "Aband %d\n" (rr c));
                        (* The array identified by the register C is abandoned.
                           Future allocations may then reuse that identifier. *)
@@ -281,7 +281,7 @@ let do_spin_cycle state : um_state * bool =
                           The '0' array shall be the most sublime choice for
                           loading, and shall be handled with the utmost
                           velocity. *)
-                       if (rr b) = 0 then cont {state' with finger_offset = (rr c)}
+                       if (rr b) = 0 then cont {state with finger_offset = (rr c)}
                        else let s' = Array.copy (Ptmap.find (rr b) ss) in
                             cont {state' with scrolls=(Ptmap.add 0 s' ss); finger_offset = (rr c)})
   | Orth (a, v)    -> (cprintln (Printf.sprintf "Orth r%d = %08x" a v);
