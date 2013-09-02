@@ -1,0 +1,32 @@
+* logins
+| user     | pass          | obtained by  | puzzle    |
+|----------+---------------+--------------+-----------|
+| ftd      | falderal90    | Better hack  | pub verif |
+| knr      |               |              |           |
+| guest    | [none]        | Login prompt | qbasic    |
+| gardener | mathemantica  | mult.2d      | antomaton |
+| ohmega   | bidirectional | ???          | 2d        |
+| yang     |               |              |           |
+| howie    | xyzzy         | Basic hack   | adventure |
+| hmonk    | COMEFROM      | ~knr/TODO    | O'Cult    |
+| bbarker  | plinko        | mult.2d      | plinko    |
+* adventure
+get pamphlet
+get manifesto
+go north
+get bolt
+get spring
+get button
+get (broken) processor
+get red pill
+get (broken) radio
+get cache
+get blue transistor
+get screw
+get (broken) motherboard
+get (broken) A-1920-IXB
+get red transistor
+get (broken) keypad
+get trash
+* 2D
+** README
